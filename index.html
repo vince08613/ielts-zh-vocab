@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111317" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="雅思词汇">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css?v=mwmfpeql">
+  <title>雅思词汇 · 中英双向测试</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-languages"></use></svg><span>雅思词汇</span><small>中英双向</small></div>
+      <nav class="tabs" aria-label="主导航">
+        <a href="#train" data-view="train" title="训练"><svg class="i" aria-hidden="true"><use href="#i-brain"></use></svg><span>训练</span></a>
+        <a href="#practice" data-view="practice" title="自测"><svg class="i" aria-hidden="true"><use href="#i-list-checks"></use></svg><span>自测</span></a>
+        <a href="#list" data-view="list" title="词表"><svg class="i" aria-hidden="true"><use href="#i-list"></use></svg><span>词表</span></a>
+        <a href="#wrong" data-view="wrong" title="错词本"><svg class="i" aria-hidden="true"><use href="#i-book-x"></use></svg><span>错词本</span><b id="wrong-badge" class="badge" hidden>0</b></a>
+        <a href="#stats" data-view="stats" title="统计"><svg class="i" aria-hidden="true"><use href="#i-chart-column"></use></svg><span>统计</span></a>
+      </nav>
+      <button id="open-settings" class="icon-btn" type="button" title="设置" aria-label="设置"><svg class="i" aria-hidden="true"><use href="#i-settings"></use></svg></button>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-train" class="view" aria-label="训练"></section>
+    <section id="view-practice" class="view" aria-label="自测" hidden></section>
+    <section id="view-list" class="view" aria-label="词表" hidden></section>
+    <section id="view-wrong" class="view" aria-label="错词本" hidden></section>
+    <section id="view-stats" class="view" aria-label="统计" hidden></section>
+  </main>
+
+  <div id="settings" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">设置</h2>
+        <button type="button" class="icon-btn" data-act="close" title="关闭" aria-label="关闭"><svg class="i" aria-hidden="true"><use href="#i-x"></use></svg></button>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  </div>
+  <input id="import-file" type="file" accept="application/json,.json" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">需要启用 JavaScript 才能使用。</p></noscript>
+
+  <script src="js/icons.js?v=mwmfpeql"></script>
+  <script src="data/vocabulary.js?v=mwmfpeql"></script>
+  <script src="js/judge.js?v=mwmfpeql"></script>
+  <script src="js/core.js?v=mwmfpeql"></script>
+  <script src="js/util.js?v=mwmfpeql"></script>
+  <script src="js/store.js?v=mwmfpeql"></script>
+  <script src="js/speech.js?v=mwmfpeql"></script>
+  <script src="js/scheduler.js?v=mwmfpeql"></script>
+  <script src="js/session.js?v=mwmfpeql"></script>
+  <script src="js/db.js?v=mwmfpeql"></script>
+  <script src="js/practice.js?v=mwmfpeql"></script>
+  <script src="js/views.js?v=mwmfpeql"></script>
+  <script src="js/train.js?v=mwmfpeql"></script>
+  <script src="js/train-home.js?v=mwmfpeql"></script>
+  <script src="js/main.js?v=mwmfpeql"></script>
+</body>
+</html>
