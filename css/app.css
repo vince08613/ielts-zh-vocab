@@ -732,6 +732,8 @@ html.kb-open .answer-area { margin-top: 10px; }
 .t-actions { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 8px; }
 .t-actions .btn { min-height: 60px; }
 .t-actions .btn small { font-size: 13px; font-weight: 500; opacity: 0.8; font-variant-numeric: tabular-nums; }
+/* Long labels with a note wrap inside the button instead of overflowing on phones. */
+.t-actions .btn, .sum-actions .btn, .t-min .btn, .t-load .btn { flex-wrap: wrap; row-gap: 0; padding-top: 6px; padding-bottom: 6px; white-space: normal; text-align: center; }
 .t-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .t-sec { padding: 12px 16px 14px; }
 .t-sec h3, .t-settings h3 { margin: 0 0 8px; font-size: 15px; }
@@ -745,6 +747,31 @@ html.kb-open .answer-area { margin-top: 10px; }
 .t-rbar span.ok { background: var(--right); }
 .t-rbar span.mid { background: var(--close); }
 .t-rbar span.off { background: var(--line-2); }
+.t-curve { margin-top: 12px; }
+.t-crow { grid-template-columns: 64px minmax(0, 1fr) 84px 92px; }
+.t-crow .t-rbar { position: relative; overflow: visible; }
+.t-crow .t-rbar > i { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink-2); border-radius: 1px; }
+.t-adj { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.t-streak { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 0 14px; color: var(--ink-2); font-size: 14px; }
+.t-streak > .i { width: 18px; height: 18px; color: var(--close); }
+.t-streak-n b { color: var(--ink); font-size: 17px; font-variant-numeric: tabular-nums; }
+.t-days { display: inline-flex; gap: 3px; }
+.t-days i { width: 14px; height: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 3px; }
+.t-days i.done { background: var(--accent-soft); border-color: var(--accent); }
+.t-days i.clear { background: var(--accent); border-color: var(--accent); }
+.t-load { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 6px; color: var(--ink-2); font-size: 14px; }
+.t-load > .i { width: 18px; height: 18px; color: var(--muted); }
+.t-load > span { flex: 1 1 260px; }
+.t-load.warn > .i, .t-load.warn > span { color: var(--close); }
+.t-min { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; margin-top: 8px; font-size: 14px; }
+.t-cp-head { display: flex; align-items: flex-start; gap: 14px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.t-cp-head > .i { flex: none; width: 32px; height: 32px; color: var(--accent); }
+.t-cp-head h2 { margin: 0 0 6px; font-size: 22px; }
+.t-cp-head p { margin: 0; color: var(--ink-2); line-height: 1.6; }
+.t-cp-list { margin: 12px 0 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.t-cp-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); }
+.t-cp-list li:first-child { border-top: 0; }
+.t-cp-list b { font-variant-numeric: tabular-nums; }
 .t-settings { margin-top: 16px; padding: 14px 20px 6px; }
 .t-settings .field { grid-template-columns: 76px minmax(0, 1fr); }
 .t-ladder { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -782,6 +809,17 @@ html.kb-open .answer-area { margin-top: 10px; }
 .t-flash-zh { min-width: 0; flex: 0 1 auto; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; }
 .t-flash-note { min-width: 0; flex: 1 1 0; overflow: hidden; color: var(--ink-2); font-size: 13px; text-align: right; text-overflow: ellipsis; }
 .t-flash .btn { flex: none; min-height: 30px; padding: 0 10px; font-size: 14px; }
+.t-flash-plus { flex: none; padding: 1px 6px; background: var(--right); border-radius: 4px; color: var(--surface); font-size: 13px; font-weight: 700; }
+.t-flash.hinted .t-flash-plus { background: var(--close); }
+.t-flash-prog, .t-flash-done { display: inline-flex; flex: 1 0 auto; align-items: center; justify-content: flex-end; gap: 6px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.t-flash-done { color: var(--right); }
+.t-flash-done .i { width: 16px; height: 16px; }
+.t-flash-prog .dots { display: inline-flex; gap: 3px; margin-right: 6px; }
+.t-flash-prog .dots i { width: 9px; height: 9px; border: 1.5px solid var(--line-2); border-radius: 50%; }
+.t-flash-prog .dots i.on { background: var(--accent); border-color: var(--accent); }
+.t-flash-prog .dots i.new { background: var(--right); border-color: var(--right); box-shadow: 0 0 0 3px rgba(29, 131, 72, 0.25); }
+.t-flash.learn .t-flash-zh { flex: 0 1 auto; }
+.w-prog-t { color: var(--ink-2); }
 .t-groups { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; color: var(--ink-2); }
 .t-groups > .i { flex: none; width: 18px; height: 18px; color: var(--accent); }
 .sum-actions .btn small { margin-left: 4px; color: inherit; font-weight: 500; opacity: 0.8; }
@@ -821,6 +859,10 @@ html.kb-open .t-flash { height: 34px; margin: -4px 0 6px; }
 @media (max-width: 560px) {
   .t-flash-note { display: none; }
   .t-flash-zh { flex: 1 1 0; }
+  .t-flash.learn .t-flash-zh { display: none; }
+  .t-crow { grid-template-columns: 52px minmax(0, 1fr) 72px; }
+  .t-crow .t-adj { grid-column: 2 / -1; margin-top: -6px; }
+  .t-cp-head { padding: 16px; }
 }
 html.kb-open .t-play { width: 64px; height: 64px; }
 

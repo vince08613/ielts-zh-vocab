@@ -22,9 +22,25 @@
   let tick = 0
   let lastCompositionEnd = 0
   let shown = '' // session:task whose answer box is on screen
+  let curveCache = null // personal forgetting curve, recomputed after each on-time review
+  let checkpoint = null // the review checkpoint shown before a new group
 
-  T.cfg = () => S.config(db.getKV('settings', {}))
-  T.setCfg = patch => db.setKV('settings', Object.assign({}, db.getKV('settings', {}), patch))
+  /** Measured recall per review point (scheduler.personalCurve) for the current settings. */
+  T.curve = () => {
+    if (!curveCache)
+      curveCache = S.personalCurve(db.cards(), S.config(db.getKV('settings', {})))
+    return curveCache
+  }
+  T.cfg = () => {
+    const c = S.config(db.getKV('settings', {}))
+    if (c.adaptive)
+      c.levelFactor = T.curve().map(r => r.factor)
+    return c
+  }
+  T.setCfg = (patch) => {
+    curveCache = null
+    db.setKV('settings', Object.assign({}, db.getKV('settings', {}), patch))
+  }
   T.now = () => Date.now()
   T.today = () => S.dayKey(Date.now(), T.cfg().dayStart)
   T.state = state
@@ -37,10 +53,12 @@
 
   /* ---------- daily statistics and the answer log ---------- */
 
-  const blankDay = () => ({ intro: 0, grad: 0, groups: 0, ans: 0, right: 0, hinted: 0, wrong: 0, manual: 0, first: { meaning: [0, 0], spell: [0, 0], listen: [0, 0] }, err: { meaning: 0, spell: 0, listen: 0 }, seen: [] })
+  const blankDay = () => ({ intro: 0, grad: 0, groups: 0, ans: 0, ms: 0, right: 0, hinted: 0, wrong: 0, manual: 0, first: { meaning: [0, 0], spell: [0, 0], listen: [0, 0] }, err: { meaning: 0, spell: 0, listen: 0 }, seen: [] })
   T.blankDay = blankDay
 
   function record(log) {
+    if (log.purpose === 'review')
+      curveCache = null
     const day = S.dayKey(log.t, T.cfg().dayStart)
     const days = Object.assign({}, db.getKV('days', {}))
     const d = days[day] = Object.assign(blankDay(), JSON.parse(JSON.stringify(days[day] || {})))
@@ -51,6 +69,7 @@
     else {
       const clean = log.res === 'right' && !log.hinted
       d.ans++
+      d.ms = (d.ms || 0) + Math.min(60000, log.ms || 0) // for time estimates
       if (clean)
         d.right++
       else if (log.res === 'right')
@@ -179,8 +198,10 @@
   T.start = (mode, plan) => {
     const c = T.cfg()
     const t = T.now()
-    session = Q.create({ mode, now: t, cfg: c, queue: plan.queue || [], newCount: plan.newCount || 0, wrongKeys: plan.wrongKeys || [], state, audio: V.canPlayAudio(), seed: t, scope: plan.scope || '' })
+    checkpoint = null
+    session = Q.create({ mode, now: t, cfg: c, queue: plan.queue || [], newCount: plan.newCount || 0, wrongKeys: plan.wrongKeys || [], state, audio: V.canPlayAudio(), seed: t, scope: plan.scope || '', cap: plan.cap || 0 })
     session.label = plan.label || ''
+    session.checkpoint = !!plan.checkpoint
     const first = Q.next(session, state, c, t)
     if (first.done) {
       session = null
@@ -239,6 +260,8 @@
     const groups = s.mode === 'daily' && s.stats.answered ? countGroup() : 0
     summary = {
       mode: s.mode,
+      checkpoint: !!s.checkpoint,
+      label: s.label || '',
       stats: s.stats,
       size: s.round.length,
       groups,
@@ -309,7 +332,12 @@
     const r = Q.commit(session, state, T.cfg(), now, outcomeOf(p))
     if (r)
       record(r.log)
-    session.flash = { uid: t.uid, skill: t.skill, hinted: !!p.hinted, note: r ? r.note : '', k: t.k || '', at: now, before, canHard, hard: false }
+    // For a new word: its counts after this answer, to show the dot that was just filled.
+    const learn = t.track === 'learn' ? Q.counts(Q.learnOf(state, t.uid)) : null
+    session.flash = {
+      uid: t.uid, skill: t.skill, hinted: !!p.hinted, note: r ? r.note : '', k: t.k || '', at: now, before, canHard, hard: false,
+      cnt: learn, added: learn && !p.hinted ? (t.skill === 'meaning' ? 'meaning' : 'spell') : '', grad: !!(r && r.graduated),
+    }
     save()
     // The next question's own audio (听写, auto-speak) replaces this one.
     if (t.skill !== 'meaning' && autoSpeak())
@@ -324,8 +352,9 @@
     const now = db.get(f.k)
     if (!now || now.last !== f.at)
       return
-    const h = S.review(f.before, 'hard', f.at, T.cfg())
+    const h = S.review(f.before, 'hard', f.at, T.cfg(), true)
     db.put(h)
+    curveCache = null
     db.log({ t: T.now(), sid: session.id, mode: session.mode, uid: f.uid, skill: f.skill, purpose: 'review', res: 'right', hard: true, kind: 'hard-after' })
     f.hard = true
     f.note = `困难，保持当前级别 · 下次 ${S.fmtInterval(h.due - h.last)}后`
@@ -428,7 +457,7 @@
     const n = Q.counts(Q.learnOf(state, t.uid))
     const dots = (k, max) => Array.from({ length: max }, (_, i) => `<i${i < k ? ' class="on"' : ''}></i>`).join('')
     return `<div class="w-prog" title="这个词无提示答对的次数，中文和英文都满了就完成">
-      <span class="w-prog-g${n.meaning >= c.meaningTarget ? ' full' : ''}"><span>中文</span><span class="dots">${dots(n.meaning, c.meaningTarget)}</span></span>
+      <span class="w-prog-t">这个词</span><span class="w-prog-g${n.meaning >= c.meaningTarget ? ' full' : ''}"><span>中文</span><span class="dots">${dots(n.meaning, c.meaningTarget)}</span></span>
       <span class="w-prog-g${n.spell >= c.spellTarget ? ' full' : ''}"><span>英文</span><span class="dots">${dots(n.spell, c.spellTarget)}</span></span></div>`
   }
 
@@ -449,8 +478,19 @@
     const hard = f.canHard
       ? `<button type="button" class="btn${f.hard ? ' is-on' : ''}" data-act="t-flash-hard" aria-pressed="${f.hard}" title="答对但费力：保持当前级别">${icon('flame')}<span>困难</span></button>`
       : ''
-    return `<div class="t-flash${f.hinted ? ' hinted' : ''}" aria-live="polite" title="${esc(f.note)}">${icon('circle-check')}<span class="t-flash-label">${f.hinted ? '对（用了提示）' : '正确'}</span>
-      ${what}<span class="t-flash-note">${esc(f.note)}</span>${hard}</div>`
+    // New words: the answered word's dots, with the one just earned marked.
+    let tail = `<span class="t-flash-note">${esc(f.note)}</span>`
+    let plus = ''
+    if (f.cnt) {
+      const c = T.cfg()
+      const dots = (g, max) => Array.from({ length: max }, (_, i) => `<i class="${i < f.cnt[g] ? 'on' : ''}${f.added === g && i === f.cnt[g] - 1 ? ' new' : ''}"></i>`).join('')
+      plus = f.added ? `<span class="t-flash-plus">${f.added === 'meaning' ? '中文' : '英文'} +1</span>` : '<span class="t-flash-plus">不计数</span>'
+      tail = f.grad
+        ? `<span class="t-flash-done">${icon('check-check')}<span>这个词完成 · ${esc(S.fmtInterval(S.intervalMs(null, 0, c)))}后复习</span></span>`
+        : `<span class="t-flash-prog" aria-label="中文 ${f.cnt.meaning}/${c.meaningTarget}，英文 ${f.cnt.spell}/${c.spellTarget}"><span>中文</span><span class="dots">${dots('meaning', c.meaningTarget)}</span><span>英文</span><span class="dots">${dots('spell', c.spellTarget)}</span></span>`
+    }
+    return `<div class="t-flash${f.hinted ? ' hinted' : ''}${f.cnt ? ' learn' : ''}" aria-live="polite" title="${esc(f.note)}">${icon('circle-check')}<span class="t-flash-label">${f.hinted ? '对（用了提示）' : '正确'}</span>
+      ${plus}${what}${tail}${hard}</div>`
   }
 
   /** Replace the run view. A focused answer box is kept, not re-created, so the iPad keyboard stays up. */
@@ -698,24 +738,36 @@
   }
 
   function renderSummary() {
-    const { stats: st, mode, unfinished, relearning, groups } = summary
+    const { stats: st, mode, unfinished, relearning, groups, checkpoint: cp } = summary
     const chips = list => list.map(uid => `<span class="chip" lang="en">${esc(word(uid).words[0])}</span>`).join('')
     const fc = S.forecast(db.cards(), T.now(), T.cfg().dayStart).filter(b => b.count).slice(0, 3)
-    // What is left today for another group of new words; due reviews have their own button.
-    const o = mode === 'daily' && T.overview ? T.overview() : null
+    // What is left today: more new words, and reviews that reached their review point meanwhile.
+    const all = T.overview ? T.overview() : null
+    const o = (mode === 'daily' || cp) && all ? all : null
     const more = o && (o.newPlanned + o.learning.length) > 0
-    const due = T.overview ? T.overview().due.length : 0
-    const today = o
+    const due = all ? all.due.length : 0
+    const reviewFirst = T.cfg().reviewFirst
+    const today = o && !cp
       ? `<p class="t-groups">${icon('layers')}<span>${groups ? `今天第 ${groups} 组完成` : '本组结束'}${more ? ` · 还剩新词 ${o.newPlanned} 个${o.learning.length ? ` · 待完成 ${o.learning.length} 个` : ''}` : ' · 今天的新词学完了'}</span></p>`
       : ''
-    const actions = (more ? `<button type="button" class="btn primary" data-act="t-next-group">${icon('play')}<span>下一组</span><small>${esc(T.groupNote(o))}</small></button>` : '')
-      + (due ? `<button type="button" class="btn${more ? '' : ' primary'}" data-act="t-due">${icon('calendar-clock')}<span>到期复习</span><small>${due}</small></button>` : '')
-      + `<button type="button" class="btn${more || due ? ' ghost' : ' primary'}" data-act="t-home">${icon('house')}<span>返回</span></button>`
+    let actions
+    if (cp) {
+      actions = (more ? `<button type="button" class="btn primary" data-act="t-new-group">${icon('play')}<span>继续学新词 · 第 ${(o.d.groups || 0) + 1} 组</span><small>${esc(T.groupNote(o))}</small></button>` : '')
+        + (due ? `<button type="button" class="btn${more ? '' : ' primary'}" data-act="t-cp-more">${icon('calendar-clock')}<span>继续复习</span><small>${due}</small></button>` : '')
+    }
+    else {
+      const nextNote = due && reviewFirst ? `先复习 ${due} 个到期词，再学新词` : more ? T.groupNote(o) : ''
+      actions = (more ? `<button type="button" class="btn primary" data-act="t-next-group">${icon('play')}<span>下一组</span><small>${esc(nextNote)}</small></button>` : '')
+        + (due && (!more || !reviewFirst) ? `<button type="button" class="btn${more ? '' : ' primary'}" data-act="t-cp-more">${icon('calendar-clock')}<span>到期复习</span><small>${due}</small></button>` : '')
+    }
+    actions += `<button type="button" class="btn${actions ? ' ghost' : ' primary'}" data-act="t-home">${icon('house')}<span>返回</span></button>`
+    const title = cp ? '复习检查点' : T.MODE[mode]
     root.innerHTML = `<div class="summary">
       <div class="sum-head"><div class="sum-score">${st.answered ? Math.round((st.right / st.answered) * 100) : 0}<small>%</small></div>
-        <div class="sum-info"><div class="sum-title"><span>${T.MODE[mode]}</span><span class="muted">无提示正确率</span></div>
+        <div class="sum-info"><div class="sum-title"><span>${title}</span><span class="muted">无提示正确率</span></div>
           <div class="sum-tally"><span class="t-right">${icon('check')}正确 ${st.right}</span><span class="t-close">${icon('lightbulb')}用提示 ${st.hinted}</span>
             <span class="t-wrong">${icon('x')}错误 ${st.wrong}</span><span class="muted">复习 ${st.reviews} · 重学通过 ${st.relearned} · 加练 ${st.extra}</span></div></div></div>
+      ${cp ? `<p class="t-groups">${icon('calendar-clock')}<span>复习了 ${st.reviews} 项${st.wrong ? `，${st.wrong} 次答错的已重学` : ''}${due ? ` · 还有 ${due} 项到了复习时间` : ' · 到期复习已清零'}</span></p>` : ''}
       ${st.graduated.length ? `<h3 class="section-title">本轮通过 ${st.graduated.length}</h3><div class="chips">${chips(st.graduated)}</div>` : ''}
       ${unfinished.length ? `<h3 class="section-title">待完成 ${unfinished.length}</h3><div class="chips">${chips(unfinished)}</div>` : ''}
       ${relearning ? `<p class="muted">${relearning} 个能力仍在重学，下次训练优先出现。</p>` : ''}
@@ -734,8 +786,38 @@
       return advance()
     if (view === 'summary' && summary)
       return renderSummary()
+    if (view === 'cp' && checkpoint)
+      return renderCheckpoint()
     view = 'home'
     T.renderHome(root)
+  }
+
+  /**
+   * Review checkpoint before a new group: what has reached its review point, so the review
+   * is not mistaken for the last group starting again. info comes from train-home.js.
+   */
+  T.showCheckpoint = (info) => {
+    clearTimers()
+    checkpoint = info
+    summary = null
+    view = 'cp'
+    renderCheckpoint()
+    window.scrollTo(0, 0)
+  }
+
+  function renderCheckpoint() {
+    const k = checkpoint
+    const list = k.parts.map(p => `<li><span>${esc(p.label)}</span><b>${p.count}</b></li>`).join('')
+    root.innerHTML = `<div class="summary t-cp">
+      <div class="t-cp-head">${icon('calendar-clock')}<div><h2>复习检查点</h2>
+        <p>有 ${k.take} 项到了复习时间（${k.words} 个词）。先复习，再学${k.next ? `第 ${k.next} 组` : ''}新词。每项考一次：答对排到下一个复习点，答错马上重学。</p></div></div>
+      <ul class="t-cp-list">${list}</ul>
+      ${k.more ? `<p class="muted">另外 ${k.more} 项留到下一个检查点，先做最容易忘的。</p>` : ''}
+      <div class="sum-actions">
+        <button type="button" class="btn primary" data-act="t-cp-start">${icon('play')}<span>开始复习</span><small>约 ${k.take} 题 · ${k.minutes} 分钟</small></button>
+        ${k.canSkip ? `<button type="button" class="btn ghost" data-act="t-cp-skip">${icon('skip-forward')}<span>先学新词</span></button>` : ''}
+        <button type="button" class="btn ghost" data-act="t-home">${icon('house')}<span>返回</span></button></div>
+    </div>`
   }
 
   /** App reopened or brought back: recompute what is due. */
@@ -769,8 +851,23 @@
       case 't-carry': return session ? finishRound() : T.render()
       case 't-home':
         summary = null
+        checkpoint = null
         view = 'home'
         return T.render()
+      case 't-cp-start':
+        return T.start('due', checkpoint.plan)
+      case 't-cp-skip':
+        checkpoint = null
+        view = 'home'
+        return T.startNew()
+      case 't-new-group':
+        summary = null
+        view = 'home'
+        return T.startNew()
+      case 't-cp-more':
+        summary = null
+        view = 'home'
+        return T.onHomeAct('h-cp')
       case 't-next-group':
         summary = null
         view = 'home'

@@ -1,6 +1,6 @@
 /* Offline cache. Network first so updates show up immediately; cache when offline.
    Bump CACHE when the asset list changes. */
-const CACHE = 'ielts-zh-vocab-v2-mwmfpeql'
+const CACHE = 'ielts-zh-vocab-v2-mwtbnu9p'
 const ASSETS = [
   './',
   'index.html',

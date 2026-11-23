@@ -1,0 +1,23 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//ielts-zh-vocab//daily reminder//ZH
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:ielts-zh-vocab-daily-1330@vince08613.github.io
+DTSTAMP:20261123T000000Z
+DTSTART:20261124T133000
+DURATION:PT30M
+RRULE:FREQ=DAILY
+SUMMARY:背单词：先做到期复习
+DESCRIPTION:打开 https://vince08613.github.io/ielts-zh-vocab/ 点“开
+ 始今日训练”。先做复习检查点，再学新词。没状态就
+ 只做 10 分钟。
+URL:https://vince08613.github.io/ielts-zh-vocab/
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:背单词：先做到期复习
+TRIGGER:PT0M
+END:VALARM
+END:VEVENT
+END:VCALENDAR

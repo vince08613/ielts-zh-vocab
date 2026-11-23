@@ -14,8 +14,17 @@
   const HOUR = 60 * MIN
   const DAY = 24 * HOUR
 
+  // Review points in minutes. classic: the widely used Ebbinghaus-style schedule
+  // (5 min, 30 min, 12 h, 1, 2, 4, 7, 15 days) plus 30 days; intense: 4 h instead of 12 h.
+  const PRESETS = {
+    classic: [5, 30, 720, 1440, 2880, 5760, 10080, 21600, 43200],
+    intense: [5, 30, 240, 1440, 2880, 5760, 10080, 21600, 43200],
+  }
+  const CURVE_MIN = 20 // reviews at a review point before its interval is personalised
+  const CURVE_WEIGHT = 30 // shrinks the adjustment toward 1 while data is still thin
+
   const DEFAULTS = {
-    ladder: [5, 30, 240, 1440, 2880, 5760, 10080, 21600, 43200], // minutes
+    ladder: PRESETS.classic.slice(), // minutes
     newPerDay: 100,
     groupSize: 20,
     meaningTarget: 4, // unaided correct 英译中 answers a word needs in a round
@@ -27,6 +36,11 @@
     timed: false,
     timeLimit: 20, // seconds; slow answers are only flagged
     autoNext: true, // an answer judged right goes straight to the next question
+    reviewFirst: true, // due reviews (a short checkpoint) before each new group
+    checkpointCap: 60, // most reviews in one checkpoint, most at risk first
+    adaptive: true, // personalise intervals of 1 day and longer from measured recall
+    targetRecall: 0.9,
+    protect: true, // fewer new words while reviews from earlier days are overdue
     stubbornFails: 3,
     stubbornFactor: 0.5,
     gapSteps: 3,
@@ -46,6 +60,8 @@
       c.wrongPenalty = 'none'
     c.groupSize = Math.max(5, Math.min(50, Math.round(c.groupSize) || 20))
     c.newPerDay = Math.max(0, Math.min(500, Math.round(c.newPerDay)))
+    c.checkpointCap = Math.max(10, Math.min(300, Math.round(c.checkpointCap) || 60))
+    c.targetRecall = Math.max(0.7, Math.min(0.97, Number(c.targetRecall) || 0.9))
     return c
   }
 
@@ -66,7 +82,8 @@
 
   function intervalMs(card, level, cfg) {
     const l = Math.max(0, Math.min(level, cfg.ladder.length - 1))
-    let ms = cfg.ladder[l] * MIN
+    // levelFactor: personal adjustment from measured recall (personalCurve), 1 when unset.
+    let ms = cfg.ladder[l] * MIN * ((cfg.levelFactor && cfg.levelFactor[l]) || 1)
     // Stubborn words come back sooner once intervals reach a day.
     if (card && card.stubborn && ms >= DAY)
       ms = Math.round(ms * cfg.stubbornFactor)
@@ -90,8 +107,9 @@
     }
   }
 
-  function push(card, now, code) {
-    card.hist.push([now, code])
+  /** History entry [time, code] or, for an on-time review, [time, code, level tested, ms since the last review]. */
+  function push(card, now, code, meta) {
+    card.hist.push(meta ? [now, code, meta[0], meta[1]] : [now, code])
     if (card.hist.length > 30)
       card.hist.splice(0, card.hist.length - 30)
   }
@@ -124,9 +142,12 @@
    * outcome: good (unaided, advance one level) | hard (correct but effortful, keep level)
    *        | fail (wrong, unknown or answer viewed: relearn) | hinted (no change, stays due)
    * The next due time always counts from `now`, the actual completion time.
+   * test: this answer was the first attempt at a due card, so it measures recall after the
+   * interval; it is kept in the history for the personal forgetting curve.
    */
-  function review(card, outcome, now, cfg) {
+  function review(card, outcome, now, cfg, test = false) {
     const c = Object.assign({}, card, { hist: card.hist.slice() })
+    const meta = test ? [card.level, Math.max(0, now - card.last)] : null
     if (outcome === 'good' || outcome === 'hard') {
       const today = dayKey(now, cfg.dayStart)
       if (c.learnedDay && today > c.learnedDay && now - c.last >= 12 * HOUR)
@@ -140,11 +161,11 @@
         c.stubborn = false
       c.last = now
       c.due = now + intervalMs(c, c.level, cfg)
-      push(c, now, outcome === 'good' ? 'g' : 'h')
+      push(c, now, outcome === 'good' ? 'g' : 'h', meta)
     }
     else if (outcome === 'hinted') {
       c.hints++
-      push(c, now, 'i')
+      push(c, now, 'i', meta)
     }
     else {
       if (c.phase !== 'relearn')
@@ -155,7 +176,7 @@
       c.streak = 0
       c.last = now
       c.due = now // stays due until relearning passes
-      push(c, now, 'w')
+      push(c, now, 'w', meta)
     }
     return c
   }
@@ -186,6 +207,17 @@
 
   const isReviewCard = c => c && (c.phase === 'review' || c.phase === 'relearn')
   const isDue = (c, now) => isReviewCard(c) && c.due <= now
+
+  /**
+   * Forgetting risk of a due card: time since the last review relative to the planned interval.
+   * A 5-minute card 20 minutes late (4x) is more at risk than a 7-day card one day late (1.1x).
+   * Cards being relearned have no interval yet and come first.
+   */
+  const riskOf = (c, now) => (c.phase === 'relearn' ? Infinity : (now - c.last) / Math.max(MIN, c.due - c.last))
+
+  function dueByRisk(cards, now) {
+    return cards.filter(c => isDue(c, now)).map(c => [riskOf(c, now), c]).sort((a, b) => b[0] - a[0] || a[1].due - b[1].due).map(x => x[1])
+  }
 
   /** Due cards, one per word ability, relearning and stubborn first, then most overdue. */
   function dueList(cards, now) {
@@ -224,6 +256,66 @@
   }
 
   /**
+   * Measured recall at each review point, from on-time reviews in the card histories.
+   * For review points of a day or more with enough data, factor is the interval change that
+   * would bring recall to cfg.targetRecall under exponential forgetting R(t) = exp(-t / S):
+   * S is estimated from the recall observed after the mean actual gap. Bounded to 0.5-2.
+   */
+  function personalCurve(cards, cfg) {
+    const rows = cfg.ladder.map((minutes, level) => ({ level, minutes, n: 0, ok: 0, gapSum: 0, gap: 0, recall: null, factor: 1 }))
+    for (const c of cards) {
+      for (const h of c.hist || []) {
+        if (h.length < 4 || !'ghiw'.includes(h[1]))
+          continue
+        const r = rows[Math.max(0, Math.min(h[2], rows.length - 1))]
+        r.n++
+        if (h[1] === 'g' || h[1] === 'h')
+          r.ok++
+        r.gapSum += h[3]
+      }
+    }
+    for (const r of rows) {
+      if (!r.n)
+        continue
+      r.recall = r.ok / r.n
+      r.gap = r.gapSum / r.n
+      if (r.minutes < 1440 || r.n < CURVE_MIN)
+        continue
+      const p = (r.ok + 1) / (r.n + 2)
+      const ideal = r.gap * Math.log(cfg.targetRecall) / Math.log(p)
+      const w = r.n / (r.n + CURVE_WEIGHT)
+      const f = Math.exp(w * Math.log(ideal / (r.minutes * MIN)))
+      r.factor = Math.round(Math.max(0.5, Math.min(2, f)) * 100) / 100
+    }
+    return rows
+  }
+
+  /**
+   * Expected questions per day if `perDay` new words are learned every day (all answers right,
+   * nothing late). Each word: learning in its group, then one review per review point and ability.
+   */
+  function projectLoad(cfg, perDay, days = 30) {
+    const abilities = cfg.scheduleListen ? 3 : 2
+    const learn = perDay * ((cfg.meaningTarget + cfg.spellTarget) * 1.15 + 1)
+    const offsets = []
+    let t = 0
+    for (let l = 0; l < cfg.ladder.length; l++) {
+      t += intervalMs(null, l, cfg)
+      offsets.push(t)
+    }
+    const review = new Array(days).fill(0)
+    for (let d = 0; d < days; d++) {
+      const start = d * DAY + 20 * HOUR // a cohort finished at 20:00
+      for (const o of offsets) {
+        const day = Math.floor((start + o) / DAY)
+        if (day < days)
+          review[day] += perDay * abilities
+      }
+    }
+    return review.map(r => ({ learn, review: r, total: Math.round(learn + r) }))
+  }
+
+  /**
    * Word status: new | skipped (marked as already known) | learning (刚学过, round not passed) | passed (本轮通过)
    * | retained (跨天复习通过 for both 英译中 and 中译英).
    */
@@ -239,5 +331,5 @@
     return 'passed'
   }
 
-  return { DEFAULTS, MIN, HOUR, DAY, config, dayKey, dayStartAt, intervalMs, fmtInterval, newCard, graduate, review, relearned, extra, isReviewCard, isDue, dueList, forecast, wordStatus, BUCKETS }
+  return { DEFAULTS, PRESETS, MIN, HOUR, DAY, config, dayKey, dayStartAt, intervalMs, fmtInterval, newCard, graduate, review, relearned, extra, isReviewCard, isDue, dueList, dueByRisk, riskOf, forecast, personalCurve, projectLoad, wordStatus, BUCKETS }
 })

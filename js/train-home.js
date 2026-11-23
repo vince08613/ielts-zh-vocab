@@ -107,7 +107,16 @@
     const days = db.getKV('days', {})
     const d = Object.assign(T.blankDay(), days[day] || {})
     const pool = newPool(c)
-    const newPlanned = Math.min(Math.max(0, c.newPerDay - d.intro), pool.length)
+    // Reviews left over from earlier days are memories already fading: learn fewer new words until they are done.
+    let protect = null
+    if (c.protect && db.getKV('protectOff', '') !== day) {
+      if (overdue.length >= 300)
+        protect = 0
+      else if (overdue.length >= 100)
+        protect = 20
+    }
+    const target = protect == null ? c.newPerDay : Math.min(c.newPerDay, protect)
+    const newPlanned = Math.min(Math.max(0, target - d.intro), pool.length)
     const wrong = wrongSet(c, t, learning, rf.has)
     const scopeList = chapterOf(c) === 'all' ? V.words : V.chapterWords[chapterOf(c)]
     const from = startIndex(c, scopeList)
@@ -156,9 +165,71 @@
     const estimate = Math.round(carryQ(group.carry) + group.fresh.length * freshQ)
     const dayTotal = Math.round(carryQ(learning) + newPlanned * freshQ + due.length)
     const groups = Math.ceil((learning.length + newPlanned) / c.groupSize)
-    return { c, t, d, due, overdue, oldest, learning, pool, newPlanned, wrong, status, acc, firstAll, firstToday, weakest, stubborn, estimate, dayTotal, groups, group, relearn: due.filter(x => x.phase === 'relearn').length, forecast: S.forecast(cards, t, c.dayStart), chapter: chapterOf(c), prefix: rf.prefix, scopeList, from, before, skipped }
+    const secs = secsPerQuestion(days, t, c)
+    const dueAll = db.cards().filter(x => (x.skill !== 'listen' || c.scheduleListen) && S.isDue(x, t)).length
+    return { c, t, d, days, due, dueAll, overdue, oldest, learning, pool, newPlanned, protect, wrong, status, acc, firstAll, firstToday, weakest, stubborn, estimate, dayTotal, groups, group, secs, relearn: due.filter(x => x.phase === 'relearn').length, forecast: S.forecast(cards, t, c.dayStart), chapter: chapterOf(c), prefix: rf.prefix, scopeList, from, before, skipped }
   }
   T.overview = overview
+
+  /** Measured seconds per answer over the last 7 days; 8 s until there is enough data. */
+  function secsPerQuestion(days, t, c) {
+    const since = S.dayKey(t - 6 * DAY, c.dayStart)
+    let ms = 0
+    let n = 0
+    for (const [k, v] of Object.entries(days)) {
+      if (k >= since && v.ms) {
+        ms += v.ms
+        n += v.ans
+      }
+    }
+    return n >= 50 ? Math.max(3, Math.min(30, ms / n / 1000)) : 8
+  }
+
+  const minutes = (questions, secs) => Math.max(1, Math.round((questions * secs) / 60))
+  const fmtMin = m => (m < 60 ? `${m} 分钟` : `${Math.round((m / 60) * 10) / 10} 小时`)
+
+  /** Days in a row with practice, ending today (or yesterday), and the last 14 days. */
+  function streakInfo(o) {
+    const key = i => S.dayKey(o.t - i * DAY, o.c.dayStart)
+    let n = 0
+    for (let i = 0; i < 1000; i++) {
+      const v = o.days[key(i)]
+      if (v && v.ans > 0)
+        n++
+      else if (i > 0)
+        break
+    }
+    const last = Array.from({ length: 14 }, (_, i) => {
+      const k = key(13 - i)
+      const v = o.days[k]
+      return { k, state: v && v.cleared ? 'clear' : v && v.ans > 0 ? 'done' : 'none' }
+    })
+    return { n, last, cleared: last.filter(x => x.state === 'clear').length }
+  }
+
+  /** The review checkpoint before a new group: due cards, most at risk first, up to checkpointCap. */
+  function checkpointInfo(o) {
+    const c = o.c
+    const list = S.dueByRisk(o.due, o.t)
+    const take = list.slice(0, c.checkpointCap)
+    const parts = new Map()
+    for (const x of take) {
+      const label = x.phase === 'relearn' ? '重学（上次答错）' : `${S.fmtInterval(S.intervalMs(null, x.level, c)).replace(' ', '')}复习点`
+      const p = parts.get(label) || { label, count: 0, order: x.phase === 'relearn' ? -1 : x.level }
+      p.count++
+      parts.set(label, p)
+    }
+    const late = take.filter(x => x.due < S.dayStartAt(o.t, c.dayStart)).length
+    const rows = [...parts.values()].sort((a, b) => a.order - b.order)
+    if (late)
+      rows.push({ label: '其中前几天留下的', count: late })
+    const more = o.newPlanned + o.learning.length > 0
+    return {
+      take: take.length, more: list.length - take.length, words: new Set(take.map(x => x.uid)).size, parts: rows,
+      minutes: minutes(take.length * 1.15, o.secs), next: more ? (o.d.groups || 0) + 1 : 0, canSkip: more,
+      plan: { cap: c.checkpointCap, scope: o.prefix, label: '复习检查点', checkpoint: true },
+    }
+  }
 
   /**
    * One daily group of groupSize words: new words from the chosen start come first, so a new
@@ -302,7 +373,20 @@
   function settingsHtml(c) {
     const hours = [0, 1, 2, 3, 4, 5, 6].map(h => `<option value="${h}"${c.dayStart === h ? ' selected' : ''}>${h}:00</option>`).join('')
     const times = [2, 3, 4, 5, 6].map(n => ({ value: n, label: `${n} 次` }))
+    const preset = Object.keys(S.PRESETS).find(k => S.PRESETS[k].join() === c.ladder.join()) || 'custom'
+    const at = Number(c.remindAt) || 2000
+    const remindOpts = []
+    for (let h = 6; h < 24; h++) {
+      for (const m of [0, 30]) {
+        const v = h * 100 + m
+        remindOpts.push(`<option value="${v}"${v === at ? ' selected' : ''}>${h}:${String(m).padStart(2, '0')}</option>`)
+      }
+    }
     return `<section class="panel t-settings"><h3>训练设置</h3>
+      <div class="field"><span class="label">复习点</span>${V.seg('ladderPreset', [{ value: 'classic', label: '艾宾浩斯 12 小时' }, { value: 'intense', label: '高强度 4 小时' }, { value: 'custom', label: '自定义', disabled: preset !== 'custom' }], preset)}</div>
+      ${toggle('reviewFirst', c.reviewFirst, '学新词前先做到期复习（复习检查点）')}
+      ${toggle('adaptive', c.adaptive, '按我的实测记忆曲线调整 1 天以后的间隔')}
+      ${toggle('protect', c.protect, '前几天的复习没做完时，自动减少新词')}
       <div class="field"><span class="label">中文答对</span>${V.seg('meaningTarget', times, c.meaningTarget)}</div>
       <div class="field"><span class="label">英文答对</span>${V.seg('spellTarget', times, c.spellTarget)}</div>
       <div class="field"><span class="label">答错后</span>${V.seg('wrongPenalty', [{ value: 'none', label: '不计数' }, { value: 'one', label: '扣 1 次' }, { value: 'reset', label: '清零' }], c.wrongPenalty)}</div>
@@ -316,7 +400,48 @@
         <input class="t-ladder" data-cfg-ladder type="text" inputmode="numeric" value="${c.ladder.join(', ')}" aria-label="复习间隔（分钟）">
         <div class="chips">${c.ladder.map(m => `<span class="chip">${S.fmtInterval(m * S.MIN)}</span>`).join('')}</div></div></div>
       <div class="field"><span class="label">每天开始</span><select data-cfg-select="dayStart" aria-label="每天开始时间">${hours}</select></div>
+      <div class="field"><span class="label">每日提醒</span><div class="t-scope-row">
+        <select data-cfg-select="remindAt" aria-label="提醒时间">${remindOpts.join('')}</select>
+        <a class="btn" href="remind/${String(at).padStart(4, '0')}.ics" data-remind>${icon('calendar-clock')}<span>添加到日历</span></a></div></div>
     </section>`
+  }
+
+  /** Recall measured at each review point, and how the interval was adjusted. */
+  function curveHtml(c) {
+    const rows = T.curve()
+    if (!rows.some(r => r.n))
+      return ''
+    const target = Math.round(c.targetRecall * 100)
+    return `<section class="panel t-sec t-curve"><h3>我的记忆曲线 <small>每个复习点无提示答对率 · 目标 ${target}%</small></h3>
+      ${rows.map((r) => {
+        const share = r.recall == null ? 0 : r.recall * 100
+        const adj = r.minutes < 1440 ? '' : !c.adaptive ? '' : r.n < 20 ? `还差 ${20 - r.n} 次` : r.factor === 1 ? '不调整' : `间隔 ×${r.factor}`
+        const cls = r.recall == null ? 'off' : r.recall * 100 < target ? 'weak' : 'ok'
+        return `<div class="t-row t-crow"><span>${S.fmtInterval(r.minutes * S.MIN)}</span><span class="t-rbar"><span style="width:${share}%" class="${cls}"></span><i style="left:${target}%"></i></span>
+          <b>${r.recall == null ? '—' : `${Math.round(r.recall * 100)}%`}<small> ${r.n} 次</small></b><span class="t-adj">${adj}</span></div>`
+      }).join('')}
+    </section>`
+  }
+
+  function streakHtml(o) {
+    const k = streakInfo(o)
+    const name = { clear: '复习清零', done: '练过', none: '没练' }
+    return `<div class="t-streak">${icon('flame')}<span class="t-streak-n">连续学习 <b>${k.n}</b> 天</span>
+      <span class="t-days" aria-label="近 14 天">${k.last.map(x => `<i class="${x.state}" title="${x.k.slice(5)} ${name[x.state]}"></i>`).join('')}</span>
+      <span class="muted">近 14 天复习清零 ${k.cleared} 天</span></div>`
+  }
+
+  /** Questions a day after a month at this many new words, and what fits into one hour. */
+  function loadHtml(o) {
+    const c = o.c
+    if (!c.newPerDay)
+      return ''
+    const p = S.projectLoad(c, c.newPerDay, 30)
+    const one = S.projectLoad(c, 1, 30)[29].total
+    const hour = Math.max(5, Math.floor((3600 / o.secs / one) / 5) * 5)
+    const m30 = minutes(p[29].total, o.secs)
+    return `<div class="t-load${m30 > 120 ? ' warn' : ''}">${icon('timer')}<span>每天 ${c.newPerDay} 个新词：第 7 天约 ${p[6].total} 题，第 30 天约 ${p[29].total} 题（约 ${fmtMin(m30)}/天，按每题 ${Math.round(o.secs)} 秒）</span>
+      ${hour < c.newPerDay ? `<button type="button" class="btn" data-act="h-hour" data-n="${hour}">${icon('minus')}<span>每天 1 小时内：${hour} 个</span></button>` : ''}</div>`
   }
 
   T.renderHome = (el) => {
@@ -325,7 +450,15 @@
     const c = o.c
     const s = T.session()
     const wrongCount = o.wrong.keys.length + o.wrong.words.length
-    const backlog = o.due.length > 200
+    const backlog = o.protect == null && o.due.length > 200
+    // A day counts as 复习清零 once nothing is due after practice.
+    if (!o.dueAll && o.d.ans > 0 && !o.d.cleared) {
+      const days = Object.assign({}, db.getKV('days', {}))
+      days[T.today()] = Object.assign({}, days[T.today()], { cleared: true })
+      db.setKV('days', days)
+      o.days = days
+    }
+    const cp = o.due.length && c.reviewFirst ? Math.min(o.due.length, c.checkpointCap) : 0
     const fmax = Math.max(1, ...o.forecast.map(b => b.count))
     const accRows = Object.keys(SKILL).map(k => ({ label: SKILL[k], count: o.acc[k][0] ? o.acc[k][1] / o.acc[k][0] : 0, value: `${pct(o.acc[k][1], o.acc[k][0])}<small> ${o.acc[k][0]}</small>`, cls: k === o.weakest ? 'weak' : '' }))
     const st = o.status
@@ -342,25 +475,30 @@
         ${kpi('刚学过（待完成）', st.learning, `未学 ${st.new}`)}
         ${kpi('顽固错词', o.stubborn.length, o.weakest ? `薄弱：${SKILL[o.weakest]}` : '暂无薄弱题型', o.stubborn.length ? 'warn' : '')}
       </div>
+      ${streakHtml(o)}
       <div class="panel t-plan">
         ${scopeHtml(o)}
         <div class="t-tasks">
           <div><span class="label">今天还剩新词</span><b>${o.newPlanned}</b><small>${o.pool.length ? `每组 ${c.groupSize} 个 · 共 ${o.groups} 组` : o.chapter === 'all' ? '已学完' : '本章已学完'}</small></div>
-          <div><span class="label">到期复习</span><b>${o.due.length}</b><small>含重学 ${o.relearn}</small></div>
+          <div><span class="label">到期复习</span><b>${o.due.length}</b><small>含重学 ${o.relearn}${o.overdue.length ? ` · 前几天留下 ${o.overdue.length}` : ''}</small></div>
           <div><span class="label">错词强化</span><b>${wrongCount}</b><small>顽固 ${o.stubborn.length}</small></div>
           <div><span class="label">待完成</span><b>${o.learning.length}</b><small>没练完，排在组的后半</small></div>
         </div>
+        ${o.protect != null ? `<div class="t-backlog">${icon('triangle-alert')}<span>前几天有 ${o.overdue.length} 项复习没做，今天新词先降到 ${o.protect} 个</span>
+          <button type="button" class="btn" data-act="h-protect-off">${icon('rotate-ccw')}<span>今天仍学 ${c.newPerDay} 个</span></button></div>` : ''}
         ${backlog ? `<div class="t-backlog">${icon('triangle-alert')}<span>复习积压：到期 ${o.due.length} 个，按当前新词目标今天全部做完约 ${o.dayTotal} 题</span>
           <button type="button" class="btn" data-act="h-light">${icon('minus')}<span>今日新词降到 20</span></button></div>` : ''}
         <div class="t-controls">
           <div class="field"><span class="label">每天新词</span>${stepper('newPerDay', c.newPerDay, 0, 300, 10)}</div>
           <div class="field"><span class="label">每组</span>${V.seg('groupSize', [10, 20, 30].map(n => ({ value: n, label: `${n} 个` })), c.groupSize)}</div>
         </div>
+        ${loadHtml(o)}
         <div class="t-actions">
-          <button type="button" class="btn${s ? '' : ' primary'} lg" data-act="h-daily">${icon('play')}<span>学新词 · 第 ${(o.d.groups || 0) + 1} 组</span><small>${groupNote(o)}</small></button>
+          <button type="button" class="btn${s ? '' : ' primary'} lg" data-act="h-daily">${icon('play')}<span>开始今日训练 · 第 ${(o.d.groups || 0) + 1} 组</span><small>${cp ? `先复习 ${cp} 项 · 再学新词` : groupNote(o)}</small></button>
           <button type="button" class="btn lg" data-act="h-due"${o.due.length ? '' : ' disabled'}>${icon('calendar-clock')}<span>到期复习</span><small>${o.due.length}</small></button>
           <button type="button" class="btn lg" data-act="h-wrong"${wrongCount ? '' : ' disabled'}>${icon('book-x')}<span>只练错词</span><small>${wrongCount}</small></button>
         </div>
+        ${o.due.length ? `<div class="t-min"><span class="muted">没状态的时候</span><button type="button" class="btn ghost" data-act="h-min">${icon('timer')}<span>只做 10 分钟：最容易忘的 ${Math.min(40, o.due.length)} 项</span></button></div>` : ''}
       </div>
       <div class="t-grid">
         <section class="panel t-sec"><h3>接下来的复习</h3>${rows(o.forecast, fmax)}</section>
@@ -369,6 +507,7 @@
           { label: '跨天复习通过', count: st.retained, cls: 'ok' }, { label: '本轮通过', count: st.passed }, { label: '刚学过', count: st.learning, cls: 'mid' }, { label: '未学', count: st.new, cls: 'off' },
         ].concat(st.skipped ? [{ label: '已会（跳过）', count: st.skipped, cls: 'off' }] : []), smax)}</section>
       </div>
+      ${curveHtml(c)}
       ${o.stubborn.length ? `<h3 class="section-title">顽固错词</h3><ul class="miss-list">${o.stubborn.slice(0, 30).map((e) => {
         const w = V.byUid[e.uid]
         const tags = Object.keys(ERR).filter(k => e.err[k]).map(k => `<span class="tag k-${k}">${ERR[k]}错 ${e.err[k]}</span>`).join('')
@@ -391,12 +530,21 @@
   }
   T.groupNote = groupNote
 
+  /** 开始今日训练 / 下一组: a review checkpoint first when reviews are due, then the next group. */
   function startDaily() {
+    const o = overview()
+    if (o.c.reviewFirst && o.due.length)
+      return T.showCheckpoint(checkpointInfo(o))
+    startNew()
+  }
+
+  function startNew() {
     const o = overview()
     const { carry, fresh } = o.group
     T.start('daily', { queue: fresh.concat(carry.map(w => w.uid)), newCount: fresh.length, scope: o.prefix, label: scopeLabel(o) })
   }
   T.startDaily = startDaily
+  T.startNew = startNew
 
   function scopeLabel(o) {
     return o.chapter === 'all' ? '' : V.chapterName(o.chapter)
@@ -425,6 +573,14 @@
       return V.speak(V.byUid[btn.dataset.uid])
     if (act === 'h-light') {
       T.setCfg({ newPerDay: 20 })
+      return T.renderHome(root)
+    }
+    if (act === 'h-hour') {
+      T.setCfg({ newPerDay: Number(btn.dataset.n) })
+      return T.renderHome(root)
+    }
+    if (act === 'h-protect-off') {
+      db.setKV('protectOff', T.today())
       return T.renderHome(root)
     }
     if (act === 'h-pick') {
@@ -457,11 +613,15 @@
       T.setCfg({ [box.dataset.name]: v })
       return T.renderHome(root)
     }
-    if (!['h-daily', 'h-due', 'h-wrong'].includes(act) || !confirmReplace())
+    if (!['h-daily', 'h-due', 'h-wrong', 'h-cp', 'h-min'].includes(act) || !confirmReplace())
       return
     if (act === 'h-daily')
       return startDaily()
     const o = overview()
+    if (act === 'h-cp')
+      return T.start('due', checkpointInfo(o).plan)
+    if (act === 'h-min')
+      return T.start('due', { cap: 40, scope: o.prefix, label: '10 分钟最低任务' })
     if (act === 'h-due')
       return T.start('due', { scope: o.prefix, label: o.prefix ? scopeLabel(o) : '' })
     T.start('wrong', { wrongKeys: o.wrong.keys, queue: o.wrong.words, label: o.prefix ? scopeLabel(o) : '' })
@@ -473,6 +633,11 @@
       return
     const name = b.parentElement.dataset.name
     const raw = b.dataset.value
+    if (name === 'ladderPreset') {
+      if (S.PRESETS[raw])
+        T.setCfg({ ladder: S.PRESETS[raw].slice() })
+      return T.renderHome(root)
+    }
     T.setCfg({ [name]: ['newOrder', 'reviewScope', 'wrongPenalty'].includes(name) ? raw : Number(raw) })
     T.renderHome(root)
   }

@@ -60,10 +60,11 @@
    * queue: the words of this round (unfinished words first, then new ones)
    * wrongKeys: card keys trained in "wrong" mode
    * scope: optional uid prefix such as "03:" that limits due reviews pulled into the round
+   * cap: 到期复习 rounds only; at most this many reviews, most at risk of being forgotten first
    */
-  function create({ mode, now, cfg, queue = [], newCount = 0, wrongKeys = [], state, audio = true, seed, scope = '' }) {
+  function create({ mode, now, cfg, queue = [], newCount = 0, wrongKeys = [], state, audio = true, seed, scope = '', cap = 0 }) {
     const s = {
-      v: 3, id: `${now.toString(36)}${Math.floor((seed || now) % 1e4).toString(36)}`, mode, created: now, scope,
+      v: 3, id: `${now.toString(36)}${Math.floor((seed || now) % 1e4).toString(36)}`, mode, created: now, scope, cap: cap || 0,
       day: S.dayKey(now, cfg.dayStart), step: 0, seq: 0, seed: (seed || now) >>> 0,
       round: queue.slice(), pending: queue.slice(), active: [], reviews: 0,
       tasks: [], newCount, last: {}, current: null, noAudio: !audio,
@@ -161,24 +162,30 @@
     if (p)
       return p
     if (a.purpose === 'review' && b.purpose === 'review')
-      return a.due - b.due || a.id - b.id
+      return (b.risk || 0) - (a.risk || 0) || a.due - b.due || a.id - b.id
     if (a.track === 'learn' && b.track === 'learn')
       return (a.minStep > s.step) - (b.minStep > s.step) || a.minStep - b.minStep || a.id - b.id
     return a.minStep - b.minStep || a.id - b.id
   }
 
-  /** Add due reviews (到期复习 rounds only; new-word rounds never pull reviews in). */
+  /**
+   * Add due reviews (到期复习 rounds only; new-word rounds never pull reviews in), ordered by
+   * forgetting risk: how far past its interval each card is, relative to the interval.
+   */
   function refreshDue(s, state, cfg, now) {
     if (s.mode !== 'due')
       return 0
     const have = new Set(s.tasks.filter(t => t.track === 'card').map(t => t.k))
     let added = 0
-    for (const c of S.dueList(state.cards(), now)) {
+    for (const c of S.dueByRisk(state.cards(), now)) {
+      if (s.cap && (s.reviews || 0) >= s.cap)
+        break
       if (s.scope && !c.uid.startsWith(s.scope))
         continue
       if (have.has(c.k) || (c.skill === 'listen' && (!cfg.scheduleListen || s.noAudio)))
         continue
-      add(s, { uid: c.uid, skill: c.skill, k: c.k, track: 'card', purpose: c.phase === 'relearn' ? 'check1' : 'review', due: c.due })
+      const risk = S.riskOf(c, now)
+      add(s, { uid: c.uid, skill: c.skill, k: c.k, track: 'card', purpose: c.phase === 'relearn' ? 'check1' : 'review', due: c.due, risk: Number.isFinite(risk) ? risk : 1e9 })
       s.reviews = (s.reviews || 0) + 1
       added++
     }
@@ -295,8 +302,9 @@
     let c = state.get(t.k)
     const ok = out.result === 'right'
     const clean = ok && !out.hinted
-    const restart = () => {
-      c = S.review(c, 'fail', now, cfg)
+    // test: the first attempt at a due card measures recall after its interval.
+    const restart = (test = false) => {
+      c = S.review(c, 'fail', now, cfg, test)
       dropChain(s, t.uid, t.skill, 'card')
       addGapped(s, { uid: t.uid, skill: t.skill, k: t.k, track: 'card', purpose: 'check1' }, now, between(s, 3, 5) + 1, 60000)
     }
@@ -315,16 +323,16 @@
     else if (t.purpose === 'review') {
       s.stats.reviews++
       if (clean) {
-        c = S.review(c, out.hard ? 'hard' : 'good', now, cfg)
+        c = S.review(c, out.hard ? 'hard' : 'good', now, cfg, true)
         note = `${out.hard ? '困难，保持当前级别' : `复习通过，升到第 ${c.level + 1} 级`} · ${nextDue(c)}`
       }
       else if (ok) {
-        c = S.review(c, 'hinted', now, cfg)
+        c = S.review(c, 'hinted', now, cfg, true)
         addGapped(s, { uid: t.uid, skill: t.skill, k: t.k, track: 'card', purpose: 'recheck' }, now, between(s, 3, 5) + 1, 60000)
         note = '用了提示，不升级 · 3～5 题后再考'
       }
       else {
-        restart()
+        restart(true)
         note = '进入重学 · 3～5 题后再考'
       }
     }
