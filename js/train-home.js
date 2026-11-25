@@ -41,7 +41,7 @@
   /** Words never introduced, in the chosen scope and order (random order is stable within a day). */
   function newPool(c) {
     const ch = chapterOf(c)
-    const scope = ch === 'all' ? V.words : V.chapterWords[ch]
+    const scope = ch === 'all' ? V.coreWords : V.chapterWords[ch]
     const pool = scope.slice(startIndex(c, scope)).filter(w => isFresh(w.uid)).map(w => w.uid)
     return c.newOrder === 'random' ? seededShuffle(pool, T.today()) : pool
   }
@@ -118,14 +118,18 @@
     const target = protect == null ? c.newPerDay : Math.min(c.newPerDay, protect)
     const newPlanned = Math.min(Math.max(0, target - d.intro), pool.length)
     const wrong = wrongSet(c, t, learning, rf.has)
-    const scopeList = chapterOf(c) === 'all' ? V.words : V.chapterWords[chapterOf(c)]
+    const scopeList = chapterOf(c) === 'all' ? V.coreWords : V.chapterWords[chapterOf(c)]
     const from = startIndex(c, scopeList)
     const before = scopeList.slice(0, from).filter(w => isFresh(w.uid)).map(w => w.uid)
     const skipped = scopeList.filter(w => isSkipped(w.uid)).map(w => w.uid)
 
     const status = { new: 0, skipped: 0, learning: 0, passed: 0, retained: 0 }
-    for (const w of V.words)
-      status[T.wordStatus(w.uid)]++
+    // Untouched wordbook words are not counted as 未学: they are optional extra lists.
+    for (const w of V.words) {
+      const st = T.wordStatus(w.uid)
+      if (st !== 'new' || !V.isBook(w.chapter))
+        status[st]++
+    }
 
     const since = S.dayKey(t - 6 * DAY, c.dayStart)
     const acc = { meaning: [0, 0], spell: [0, 0], listen: [0, 0] }
@@ -256,13 +260,13 @@
         .join('')
     }
     const opts = [`<option value=""${cur ? '' : ' selected'}>从第 1 章开头开始</option>`]
-    const firsts = V.chapterWords.map(list => list[0].uid)
+    const firsts = V.chapterWords.filter((_, i) => !V.isBook(i)).map(list => list[0].uid)
     if (cur && !firsts.includes(cur) && V.byUid[cur]) {
       const w = V.byUid[cur]
       opts.push(`<option value="${esc(cur)}" selected>从 ${esc(w.words[0])}（${esc(V.chapterName(w.chapter))}）开始</option>`)
     }
     V.chapterWords.forEach((list, i) => {
-      if (i)
+      if (i && !V.isBook(i))
         opts.push(`<option value="${esc(list[0].uid)}"${list[0].uid === cur ? ' selected' : ''}>从 ${esc(V.chapterName(i))} 开始</option>`)
     })
     return opts.join('')
@@ -272,9 +276,13 @@
     const c = o.c
     const ch = o.chapter
     const stats = chapterStats()
-    const total = stats.reduce((n, st) => n + st.new, 0)
+    const total = stats.reduce((n, st, i) => n + (V.isBook(i) ? 0 : st.new), 0)
+    const option = i => `<option value="${i}"${ch === i ? ' selected' : ''}>${esc(V.chapterName(i))} · ${stats[i].new ? `剩 ${stats[i].new} 新词` : '新词已学完'}</option>`
+    const idx = V.data.chapters.map((_, i) => i)
+    const books = idx.filter(i => V.isBook(i))
     const opts = [`<option value="all"${ch === 'all' ? ' selected' : ''}>全部章节 · 剩 ${total} 新词</option>`]
-      .concat(V.data.chapters.map((x, i) => `<option value="${i}"${ch === i ? ' selected' : ''}>${esc(V.chapterName(i))} · ${stats[i].new ? `剩 ${stats[i].new} 新词` : '新词已学完'}</option>`))
+      .concat(idx.filter(i => !V.isBook(i)).map(option))
+      .concat(books.length ? [`<optgroup label="考点词书">${books.map(option).join('')}</optgroup>`] : [])
     const st = ch === 'all' ? null : stats[ch]
     const note = st
       ? `<div class="field-note">本章 ${V.data.chapters[ch].count} 词：未学 ${st.new} · 刚学过 ${st.learning} · 本轮通过 ${st.passed} · 跨天通过 ${st.retained}${st.skipped ? ` · 已会 ${st.skipped}` : ''}</div>`
@@ -476,6 +484,7 @@
         ${kpi('顽固错词', o.stubborn.length, o.weakest ? `薄弱：${SKILL[o.weakest]}` : '暂无薄弱题型', o.stubborn.length ? 'warn' : '')}
       </div>
       ${streakHtml(o)}
+      ${V.daily ? V.daily.panel() : ''}
       <div class="panel t-plan">
         ${scopeHtml(o)}
         <div class="t-tasks">
@@ -565,6 +574,8 @@
   }
 
   T.onHomeAct = (act, btn) => {
+    if (act === 'h-skill')
+      return V.daily && V.daily.go(btn.dataset.key)
     if (act === 'h-resume')
       return T.resume()
     if (act === 'h-end')

@@ -5,7 +5,8 @@
   const raw = window.VOCAB_DATA
 
   V.data = raw
-  V.words = raw.words.map(t => ({ id: t[0], chapter: t[1], group: t[2], words: t[3], pos: t[4], meaning: t[5], example: t[6], extra: t[7] }))
+  // syn: tested synonym replacements (听力 179 / 阅读 538 wordbooks only).
+  V.words = raw.words.map(t => ({ id: t[0], chapter: t[1], group: t[2], words: t[3], pos: t[4], meaning: t[5], example: t[6], extra: t[7], syn: t[8] || [] }))
   V.byId = {}
   V.byUid = {}
   // Stable id: chapter number + headword, so progress survives reordering of the source list.
@@ -15,6 +16,12 @@
     V.byUid[w.uid] = w
   })
   V.chapterWords = raw.chapters.map((_, i) => V.words.filter(w => w.chapter === i))
+  // "全部章节" means the 22 chapters of 雅思词汇真经. The 听力 179 / 阅读 538 wordbooks repeat
+  // some of those words under their own ids, so they are chosen separately.
+  V.coreWords = V.words.filter(w => !raw.chapters[w.chapter].book)
+  V.isBook = i => !!(raw.chapters[i] && raw.chapters[i].book)
+  /** Index of the 听力 179 / 阅读 538 wordbooks. */
+  V.bookIndex = key => raw.chapters.findIndex(c => c.key === key)
 
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }
   V.esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c])
@@ -23,16 +30,22 @@
     if (i === 'all')
       return '全部章节'
     const c = raw.chapters[i]
-    return c ? `${String(i + 1).padStart(2, '0')} ${c.name}` : ''
+    if (!c)
+      return ''
+    return c.book ? c.name : `${String(i + 1).padStart(2, '0')} ${c.name}`
   }
 
   V.chapterOptions = (selected, withAll) => {
     const out = []
     if (withAll)
-      out.push(`<option value="all"${selected === 'all' ? ' selected' : ''}>全部章节 · ${V.words.length} 词</option>`)
+      out.push(`<option value="all"${selected === 'all' ? ' selected' : ''}>全部章节 · ${V.coreWords.length} 词</option>`)
+    const books = []
     raw.chapters.forEach((c, i) => {
-      out.push(`<option value="${i}"${selected === i ? ' selected' : ''}>${V.esc(V.chapterName(i))} · ${c.count} 词</option>`)
+      const opt = `<option value="${i}"${selected === i ? ' selected' : ''}>${V.esc(V.chapterName(i))} · ${c.count} 词</option>`
+      ;(c.book ? books : out).push(opt)
     })
+    if (books.length)
+      out.push(`<optgroup label="考点词书">${books.join('')}</optgroup>`)
     return out.join('')
   }
 

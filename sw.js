@@ -1,14 +1,21 @@
 /* Offline cache. Network first so updates show up immediately; cache when offline.
    Bump CACHE when the asset list changes. */
-const CACHE = 'ielts-zh-vocab-v2-mwtbnu9p'
+const CACHE = 'ielts-zh-vocab-v3-mwwd775m'
 const ASSETS = [
   './',
   'index.html',
   'css/app.css',
+  'css/skills.css',
   'js/icons.js',
   'data/vocabulary.js',
+  'data/skills.js',
+  'data/reading.js',
+  'data/writing.js',
+  'data/speaking.js',
   'js/judge.js',
   'js/core.js',
+  'js/answers.js',
+  'js/writing-check.js',
   'js/util.js',
   'js/store.js',
   'js/speech.js',
@@ -19,6 +26,14 @@ const ASSETS = [
   'js/views.js',
   'js/train.js',
   'js/train-home.js',
+  'js/skill-kit.js',
+  'js/syn-drill.js',
+  'js/daily.js',
+  'js/listening.js',
+  'js/reading.js',
+  'js/writing.js',
+  'js/speaking.js',
+  'js/resources.js',
   'js/main.js',
   'manifest.webmanifest',
   'icons/apple-touch-icon.png',

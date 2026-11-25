@@ -33,6 +33,46 @@
 
   V.canPlayAudio = () => ('speechSynthesis' in window) || navigator.onLine !== false
 
+  /**
+   * Read any English text with the system voice (examiner questions, Section 1 dictation).
+   * Resolves 'end' when finished, 'none' without speech support. opts: { rate, lang }.
+   */
+  V.say = (text, opts = {}) => new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) {
+      V.toast('此设备不支持语音播放')
+      return resolve('none')
+    }
+    const synth = window.speechSynthesis
+    synth.cancel()
+    if (audio)
+      audio.pause()
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = opts.lang || V.store.settings.accent
+    u.rate = opts.rate || 0.92
+    const voice = pickVoice(u.lang)
+    if (voice)
+      u.voice = voice
+    let done = false
+    const finish = (how) => {
+      if (!done) {
+        done = true
+        resolve(how)
+      }
+    }
+    u.onend = () => finish('end')
+    u.onerror = () => finish('end')
+    synth.speak(u)
+    // Some engines never fire onend: stop waiting after a generous estimate.
+    setTimeout(() => finish('end'), 2000 + text.length * 120 / u.rate)
+  })
+
+  V.stopSpeech = () => {
+    if ('speechSynthesis' in window)
+      window.speechSynthesis.cancel()
+    if (audio)
+      audio.pause()
+  }
+
   /** Play a word. Resolves to 'dict' | 'tts' | 'none' | 'blocked' (autoplay needs a tap). */
   V.speak = word => new Promise((resolve) => {
     if (!word)
@@ -41,7 +81,8 @@
     if (V.store.settings.voice !== 'dict' || navigator.onLine === false)
       return resolve(tts(text))
     const chapter = V.data.chapters[word.chapter].key
-    const url = `${AUDIO_BASE}${encodeURIComponent(chapter)}/${encodeURIComponent(text)}.mp3`
+    const tpl = V.data.chapters[word.chapter].audio
+    const url = tpl ? tpl.replace('{w}', encodeURIComponent(text)) : `${AUDIO_BASE}${encodeURIComponent(chapter)}/${encodeURIComponent(text)}.mp3`
     if (failed.has(url))
       return resolve(tts(text))
     if ('speechSynthesis' in window)

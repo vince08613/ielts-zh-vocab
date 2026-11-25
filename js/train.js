@@ -140,17 +140,22 @@
     return hits.find(o => o.uid !== target.uid && V.core.meaningsOverlap(o, target))
   }
 
-  let senseCount = null
+  let senseOwners = null
   /** True when another word shares one of this word's senses, so 中译英 needs context. */
   function ambiguous(w) {
-    if (!senseCount) {
-      senseCount = new Map()
+    // Counted by headword: the wordbooks repeat some 真经 words, which are not a different word.
+    if (!senseOwners) {
+      senseOwners = new Map()
       for (const x of V.words) {
-        for (const s of new Set(J.senses(x.meaning, x.pos)))
-          senseCount.set(s, (senseCount.get(s) || 0) + 1)
+        const head = x.words[0].toLowerCase()
+        for (const s of new Set(J.senses(x.meaning, x.pos))) {
+          if (!senseOwners.has(s))
+            senseOwners.set(s, new Set())
+          senseOwners.get(s).add(head)
+        }
       }
     }
-    return J.senses(w.meaning, w.pos).some(s => senseCount.get(s) > 1)
+    return J.senses(w.meaning, w.pos).some(s => senseOwners.get(s).size > 1)
   }
 
   function judgeTask(t, answer) {

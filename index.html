@@ -13,22 +13,33 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="css/app.css?v=mwtbnu9p">
-  <title>雅思词汇 · 中英双向测试</title>
+  <link rel="stylesheet" href="css/app.css?v=mwwd775m">
+  <link rel="stylesheet" href="css/skills.css?v=mwwd775m">
+  <title>雅思词汇 · 听说读写</title>
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-languages"></use></svg><span>雅思词汇</span><small>中英双向</small></div>
+      <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-languages"></use></svg><span>雅思词汇</span><small>听说读写</small></div>
       <nav class="tabs" aria-label="主导航">
         <a href="#train" data-view="train" title="训练"><svg class="i" aria-hidden="true"><use href="#i-brain"></use></svg><span>训练</span></a>
-        <a href="#practice" data-view="practice" title="自测"><svg class="i" aria-hidden="true"><use href="#i-list-checks"></use></svg><span>自测</span></a>
-        <a href="#list" data-view="list" title="词表"><svg class="i" aria-hidden="true"><use href="#i-list"></use></svg><span>词表</span></a>
-        <a href="#wrong" data-view="wrong" title="错词本"><svg class="i" aria-hidden="true"><use href="#i-book-x"></use></svg><span>错词本</span><b id="wrong-badge" class="badge" hidden>0</b></a>
-        <a href="#stats" data-view="stats" title="统计"><svg class="i" aria-hidden="true"><use href="#i-chart-column"></use></svg><span>统计</span></a>
+        <a href="#vocab" data-view="vocab" title="词汇"><svg class="i" aria-hidden="true"><use href="#i-book-a"></use></svg><span>词汇</span><b id="vocab-badge" class="badge" hidden>0</b></a>
+        <a href="#listening" data-view="listening" title="听力"><svg class="i" aria-hidden="true"><use href="#i-headphones"></use></svg><span>听力</span></a>
+        <a href="#reading" data-view="reading" title="阅读"><svg class="i" aria-hidden="true"><use href="#i-book-open-text"></use></svg><span>阅读</span></a>
+        <a href="#writing" data-view="writing" title="写作"><svg class="i" aria-hidden="true"><use href="#i-pen-line"></use></svg><span>写作</span></a>
+        <a href="#speaking" data-view="speaking" title="口语"><svg class="i" aria-hidden="true"><use href="#i-mic"></use></svg><span>口语</span></a>
+        <a href="#resources" data-view="resources" title="资源"><svg class="i" aria-hidden="true"><use href="#i-library"></use></svg><span>资源</span></a>
       </nav>
       <button id="open-settings" class="icon-btn" type="button" title="设置" aria-label="设置"><svg class="i" aria-hidden="true"><use href="#i-settings"></use></svg></button>
     </div>
+    <nav class="subtabs" aria-label="词汇" hidden>
+      <div class="subtabs-inner">
+        <a href="#practice" data-view="practice"><svg class="i" aria-hidden="true"><use href="#i-list-checks"></use></svg><span>自测</span></a>
+        <a href="#list" data-view="list"><svg class="i" aria-hidden="true"><use href="#i-list"></use></svg><span>词表</span></a>
+        <a href="#wrong" data-view="wrong"><svg class="i" aria-hidden="true"><use href="#i-book-x"></use></svg><span>错词本</span><b id="wrong-badge" class="badge" hidden>0</b></a>
+        <a href="#stats" data-view="stats"><svg class="i" aria-hidden="true"><use href="#i-chart-column"></use></svg><span>统计</span></a>
+      </div>
+    </nav>
   </header>
 
   <main>
@@ -37,6 +48,11 @@
     <section id="view-list" class="view" aria-label="词表" hidden></section>
     <section id="view-wrong" class="view" aria-label="错词本" hidden></section>
     <section id="view-stats" class="view" aria-label="统计" hidden></section>
+    <section id="view-listening" class="view" aria-label="听力" hidden></section>
+    <section id="view-reading" class="view" aria-label="阅读" hidden></section>
+    <section id="view-writing" class="view" aria-label="写作" hidden></section>
+    <section id="view-speaking" class="view" aria-label="口语" hidden></section>
+    <section id="view-resources" class="view" aria-label="资源" hidden></section>
   </main>
 
   <div id="settings" class="modal" hidden>
@@ -52,20 +68,34 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <noscript><p class="noscript">需要启用 JavaScript 才能使用。</p></noscript>
 
-  <script src="js/icons.js?v=mwtbnu9p"></script>
-  <script src="data/vocabulary.js?v=mwtbnu9p"></script>
-  <script src="js/judge.js?v=mwtbnu9p"></script>
-  <script src="js/core.js?v=mwtbnu9p"></script>
-  <script src="js/util.js?v=mwtbnu9p"></script>
-  <script src="js/store.js?v=mwtbnu9p"></script>
-  <script src="js/speech.js?v=mwtbnu9p"></script>
-  <script src="js/scheduler.js?v=mwtbnu9p"></script>
-  <script src="js/session.js?v=mwtbnu9p"></script>
-  <script src="js/db.js?v=mwtbnu9p"></script>
-  <script src="js/practice.js?v=mwtbnu9p"></script>
-  <script src="js/views.js?v=mwtbnu9p"></script>
-  <script src="js/train.js?v=mwtbnu9p"></script>
-  <script src="js/train-home.js?v=mwtbnu9p"></script>
-  <script src="js/main.js?v=mwtbnu9p"></script>
+  <script src="js/icons.js?v=mwwd775m"></script>
+  <script src="data/vocabulary.js?v=mwwd775m"></script>
+  <script src="data/skills.js?v=mwwd775m"></script>
+  <script src="data/reading.js?v=mwwd775m"></script>
+  <script src="data/writing.js?v=mwwd775m"></script>
+  <script src="data/speaking.js?v=mwwd775m"></script>
+  <script src="js/judge.js?v=mwwd775m"></script>
+  <script src="js/core.js?v=mwwd775m"></script>
+  <script src="js/answers.js?v=mwwd775m"></script>
+  <script src="js/writing-check.js?v=mwwd775m"></script>
+  <script src="js/util.js?v=mwwd775m"></script>
+  <script src="js/store.js?v=mwwd775m"></script>
+  <script src="js/speech.js?v=mwwd775m"></script>
+  <script src="js/scheduler.js?v=mwwd775m"></script>
+  <script src="js/session.js?v=mwwd775m"></script>
+  <script src="js/db.js?v=mwwd775m"></script>
+  <script src="js/practice.js?v=mwwd775m"></script>
+  <script src="js/views.js?v=mwwd775m"></script>
+  <script src="js/train.js?v=mwwd775m"></script>
+  <script src="js/train-home.js?v=mwwd775m"></script>
+  <script src="js/skill-kit.js?v=mwwd775m"></script>
+  <script src="js/syn-drill.js?v=mwwd775m"></script>
+  <script src="js/daily.js?v=mwwd775m"></script>
+  <script src="js/listening.js?v=mwwd775m"></script>
+  <script src="js/reading.js?v=mwwd775m"></script>
+  <script src="js/writing.js?v=mwwd775m"></script>
+  <script src="js/speaking.js?v=mwwd775m"></script>
+  <script src="js/resources.js?v=mwwd775m"></script>
+  <script src="js/main.js?v=mwwd775m"></script>
 </body>
 </html>

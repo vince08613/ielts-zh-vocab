@@ -43,8 +43,15 @@
 
   /* ---------- setup ---------- */
 
+  /** Words a session may draw from. 全部章节 = the 22 真经 chapters; the wrong book keeps every word. */
+  function scopeOf(chapter, source) {
+    if (chapter !== 'all')
+      return V.chapterWords[chapter]
+    return source === 'wrong' ? V.words : V.coreWords
+  }
+
   function sourceCounts(cfg) {
-    const scope = cfg.chapter === 'all' ? V.words : V.chapterWords[cfg.chapter]
+    const scope = scopeOf(cfg.chapter, '')
     const p = store.progress[cfg.dir]
     const c = { all: scope.length, new: 0, weak: 0, wrong: 0, mastered: 0 }
     for (const w of scope) {
@@ -55,7 +62,9 @@
         c.mastered++
       else
         c.weak++
-      if (st === 'review')
+    }
+    for (const w of scopeOf(cfg.chapter, 'wrong')) {
+      if (core.statusOf(p[w.id]) === 'review')
         c.wrong++
     }
     return c
@@ -144,7 +153,7 @@
   /* ---------- session lifecycle ---------- */
 
   function startSession(cfg, ids, title) {
-    const queue = ids || core.buildQueue(V.words, cfg, store.progress[cfg.dir])
+    const queue = ids || core.buildQueue(scopeOf(cfg.chapter, cfg.source), cfg, store.progress[cfg.dir])
     if (!queue.length) {
       V.toast('当前范围没有可测的单词')
       return false

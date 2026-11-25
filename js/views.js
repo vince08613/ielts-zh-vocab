@@ -68,7 +68,7 @@
 
   function renderListBody() {
     const L = store.list
-    const words = L.chapter === 'all' ? V.words : V.chapterWords[L.chapter]
+    const words = L.chapter === 'all' ? V.coreWords : V.chapterWords[L.chapter]
     const query = el.list.querySelector('#list-search').value
     const { html, shown } = listRows(words, L.mask, query)
     el.list.querySelector('.list-count').textContent = query.trim() ? `找到 ${shown} 个` : `${shown} 个词`
@@ -291,7 +291,7 @@
           <button type="button" class="btn danger" data-act="reset">${icon('trash-2')}<span>清除</span></button>
         </div>
       </div>
-      <p class="credit">词库：<a href="https://github.com/hefengxian/my-ielts" target="_blank" rel="noopener">hefengxian/my-ielts</a>（雅思词汇真经 ${V.words.length} 词），仅供个人学习。</p>`
+      <p class="credit">词库：<a href="https://github.com/hefengxian/my-ielts" target="_blank" rel="noopener">hefengxian/my-ielts</a>（雅思词汇真经 ${V.coreWords.length} 词，另有听力 179 与阅读 538 考点词书 ${V.words.length - V.coreWords.length} 词），仅供个人学习。</p>`
   }
 
   function openSettings() {
