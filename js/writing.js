@@ -15,6 +15,8 @@
     { value: 'task1', label: '小作文', icon: 'chart-line' },
     { value: 'task2', label: '大作文', icon: 'notebook-pen' },
     { value: 'sent', label: '100 句翻译', icon: 'languages' },
+    { value: 'tense', label: '时态语态', icon: 'clock' },
+    { value: 'pros', label: '利弊类', icon: 'scale' },
     { value: 'kit', label: '素材与评分', icon: 'book-open' },
   ]
   const SENT_RUN = 5
@@ -184,6 +186,8 @@
   }
 
   function planHtml(p) {
+    if (p.pc && V.prosCons)
+      return V.prosCons.planHtml()
     if (p.task === 2) {
       const t = W.types[p.type]
       return t ? `<ol class="w-plan">${t.plan.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''
@@ -259,11 +263,13 @@
     const repeats = r.repeats.slice(0, 8).map(x => `<li><b lang="en">${esc(x.word)}</b><span class="muted">×${x.count}${x.topic ? '（题目里的词）' : ''}</span>${x.suggest.length || x.book.length ? `<span class="chips">${[...new Set([...x.book, ...x.suggest])].slice(0, 6).map(s => `<span class="chip" lang="en">${esc(s)}</span>`).join('')}</span>` : ''}</li>`).join('')
     const linkers = r.linkers.slice(0, 12).map(l => `<span class="chip" lang="en">${esc(l.word)} ×${l.count}</span>`).join('')
     const crit = criteriaFor(e.task).map(c => `<fieldset class="w-crit"><legend>${esc(c.name)}</legend>${c.checks.map((x, i) => `<label class="sh-check"><input type="checkbox" data-act="w-self" data-k="${c.key}" data-i="${i}"${(e.self[c.key] || [])[i] ? ' checked' : ''}><span>${esc(x)}</span></label>`).join('')}</fieldset>`).join('')
-    const hint = p ? (Array.isArray(p.hint) ? `<ul class="w-plan">${p.hint.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : `<p>${esc(p.hint)}</p>`) : ''
+    const hint = p && p.hint ? (Array.isArray(p.hint) ? `<ul class="w-plan">${p.hint.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : `<p>${esc(p.hint)}</p>`)
+      : p && p.pc && V.prosCons ? V.prosCons.planHtml() : ''
     const paras = e.text.split(/\n\s*\n|\n/).filter(x => x.trim()).map(x => `<p>${esc(x)}</p>`).join('')
     return `<div class="w-review">
       <div class="rd-bar"><button type="button" class="btn ghost" data-act="w-back">${icon('chevron-left')}<span>返回</span></button>
         <span class="muted">${K.date(e.at)} · ${e.words} 词 · 用时 ${V.fmtDuration(e.secs * 1000)}</span><span class="spacer"></span>
+        ${p && p.pc ? `<button type="button" class="btn ghost" data-act="p-essay" data-id="${p.id}">${icon('book-open')}<span>对照范文</span></button>` : ''}
         ${p ? `<button type="button" class="btn" data-act="w-rewrite" data-id="${e.id}">${icon('pencil-line')}<span>改写一版</span></button>` : ''}</div>
       ${p ? `<div class="w-prompt panel"><p lang="en">${esc(p.prompt)}</p>${p.task === 1 ? chartHtml(p) : ''}</div>` : ''}
       <div class="w-cols">
@@ -280,104 +286,9 @@
       <p class="sk-note">${icon('info')}<span>自动检查只能发现字数、结构和常见错误，不能代替考官评分，也不估分。</span></p></div>`
   }
 
-  /* ---------- 100 sentences ---------- */
+  /* ---------- 100 sentences: js/sent-drill.js ---------- */
 
-  let sRun = null
-  let sShown = false
-  const sStats = () => K.get('sentstats', {})
-  const sections = [...new Set(SK.sentences.map(s => s.section))]
-
-  function sStart(kind, value) {
-    const st = sStats()
-    let list = []
-    if (kind === 'section')
-      list = SK.sentences.filter(s => s.section === sections[Number(value)])
-    else if (kind === 'wrong')
-      list = SK.sentences.filter(s => st[s.no] && !st[s.no].lastOk)
-    else
-      list = K.shuffle(SK.sentences.filter(s => !st[s.no] || !st[s.no].lastOk)).slice(0, SENT_RUN)
-    if (!list.length)
-      return V.toast('没有可练的句子')
-    sRun = { nos: list.map(s => s.no), pos: 0, ok: 0, typed: '' }
-    sShown = false
-    renderBody()
-    const ta = body.querySelector('#s-answer')
-    if (ta)
-      ta.focus({ preventScroll: true })
-  }
-
-  function sReveal() {
-    const ta = body.querySelector('#s-answer')
-    sRun.typed = ta ? ta.value : ''
-    if (!sRun.typed.trim())
-      return ta && ta.focus()
-    sShown = true
-    renderBody()
-  }
-
-  function sGrade(ok) {
-    const no = sRun.nos[sRun.pos]
-    const st = sStats()
-    const s = st[no] || { n: 0, ok: 0, lastOk: false, at: 0 }
-    s.n++
-    if (ok)
-      s.ok++
-    s.lastOk = ok
-    s.at = Date.now()
-    st[no] = s
-    K.set('sentstats', st)
-    if (ok)
-      sRun.ok++
-    if (V.daily)
-      V.daily.mark('sent', 1)
-    sRun.pos++
-    sRun.typed = ''
-    sShown = false
-    renderBody()
-    const ta = body.querySelector('#s-answer')
-    if (ta)
-      ta.focus({ preventScroll: true })
-  }
-
-  function sentHtml() {
-    const st = sStats()
-    if (sRun && sRun.pos < sRun.nos.length) {
-      const s = SK.sentences.find(x => x.no === sRun.nos[sRun.pos])
-      const flags = sShown ? CHECK.analyze(sRun.typed, { task: 't2', min: 1 }).patterns : []
-      return `<div class="sd-run">
-        <div class="sd-top"><span class="tag">${esc(s.section)}</span><span class="muted sd-count">${sRun.pos + 1} / ${sRun.nos.length}</span><span class="spacer"></span>
-          <button type="button" class="btn ghost" data-act="s-quit">${icon('x')}<span>结束</span></button></div>
-        <div class="sd-q panel"><div class="s-zh"><b>${s.no}</b><span>${esc(s.zh)}</span></div>
-          <textarea id="s-answer" class="text-area s-answer" rows="3" lang="en" spellcheck="false" autocorrect="off" autocapitalize="sentences" placeholder="English translation"${sShown ? ' readonly' : ''}>${esc(sRun.typed)}</textarea>
-          ${sShown ? `<div class="s-ref">
-            ${flags.length ? `<ul class="w-pats">${flags.map(x => `<li><span class="tag bad">${KIND_NAME[x.kind] || x.kind}</span><div><span>${esc(x.why)}</span></div></li>`).join('')}</ul>` : ''}
-            <div class="sd-fb-row"><span class="label">参考</span><b lang="en">${esc(s.book)}</b></div>
-            ${s.orig ? `<div class="sd-fb-row"><span class="label">原书</span><span><s lang="en">${esc(s.orig)}</s><span class="muted"> 已更正：${esc(s.why)}</span></span></div>` : ''}
-            ${s.alt ? `<div class="sd-fb-row"><span class="label">也可以</span><span lang="en">${esc(s.alt)}</span></div>` : ''}
-            ${s.note ? `<div class="sd-fb-row"><span class="label">注释</span><span>${esc(s.note)}</span></div>` : ''}</div>
-            <div class="sk-actions"><span class="muted">对照参考，语法和用词都对才算写对</span><span class="spacer"></span>
-              <button type="button" class="btn" data-act="s-grade" data-ok="0">${icon('x')}<span>有错误</span></button>
-              <button type="button" class="btn primary" data-act="s-grade" data-ok="1">${icon('check')}<span>写对了</span></button></div>`
-            : `<div class="sk-actions"><span class="spacer"></span><button type="button" class="btn primary" data-act="s-reveal">${icon('eye')}<span>对照参考</span></button></div>`}</div></div>`
-    }
-    const wrongN = SK.sentences.filter(s => st[s.no] && !st[s.no].lastOk).length
-    const doneN = SK.sentences.filter(s => st[s.no] && st[s.no].lastOk).length
-    const rows = sections.map((name, i) => {
-      const list = SK.sentences.filter(s => s.section === name)
-      const ok = list.filter(s => st[s.no] && st[s.no].lastOk).length
-      return `<li class="sd-group"><div class="sd-gname"><b>${esc(name)}</b><span class="muted">${list.length} 句${ok ? ` · 写对 ${ok}` : ''}</span></div>
-        <div class="sbar" role="img" aria-label="写对 ${ok} / ${list.length}"><span class="b-mastered" style="width:${(ok / list.length) * 100}%"></span></div>
-        <button type="button" class="btn" data-act="s-start" data-kind="section" data-value="${i}">${icon('play')}<span>练习</span></button></li>`
-    }).join('')
-    const fixed = SK.sentences.filter(s => s.orig).length
-    return `<div class="s-home">
-      ${sRun ? `<div class="panel sd-sum-box"><div class="sd-sum-score"><b>${sRun.ok}</b><span>/ ${sRun.nos.length}</span></div><div><b>本次练完</b><div class="muted">写对 ${sRun.ok} 句</div></div></div>` : ''}
-      <div class="sk-actions sd-quick"><button type="button" class="btn primary" data-act="s-start" data-kind="mixed">${icon('shuffle')}<span>随机 ${SENT_RUN} 句</span></button>
-        <button type="button" class="btn" data-act="s-start" data-kind="wrong"${wrongN ? '' : ' disabled'}>${icon('book-x')}<span>写错的 ${wrongN}</span></button><span class="spacer"></span>
-        <span class="muted">写对 ${doneN} / ${SK.sentences.length}</span></div>
-      <ul class="sd-groups">${rows}</ul>
-      <p class="sk-note">${icon('info')}<span>句子按语法结构分组，来自 my-ielts 整理的《雅思写作 100 句》。原书 ${fixed} 处参考译文有语法或用词错误，已更正并在答案里标出；“也可以”一栏的备选译文已逐句校对。</span></p></div>`
-  }
+  const sent = V.sentDrill()
 
   /* ---------- reference ---------- */
 
@@ -408,7 +319,15 @@
       stopTick = null
     }
     if (tab === 'sent') {
-      body.innerHTML = sentHtml()
+      sent.render(body)
+      return
+    }
+    if (tab === 'tense' && V.grammarDrill) {
+      V.grammarDrill.render(body)
+      return
+    }
+    if (tab === 'pros' && V.prosCons) {
+      V.prosCons.render(body)
       return
     }
     if (tab === 'kit') {
@@ -467,7 +386,6 @@
         leave()
         K.set('wopen', '')
         view = 'list'
-        sRun = null
         K.set('tab:writing', el.dataset.value)
         return render()
       case 'w-open': return open(el.dataset.id)
@@ -510,13 +428,33 @@
         K.set(`wdraft:${e.pid}`, { text: e.text, acc: 0, since: null })
         return open(e.pid)
       }
-      case 's-start': return sStart(el.dataset.kind, el.dataset.value)
-      case 's-reveal': return sReveal()
-      case 's-grade': return sGrade(el.dataset.ok === '1')
-      case 's-quit':
-        sRun = null
-        return renderBody()
     }
+    if (name.startsWith('s-'))
+      return sent.act(name, el, body)
+    if (name.startsWith('g-') && V.grammarDrill)
+      return V.grammarDrill.act(name, el, body)
+    if (name.startsWith('p-') && V.prosCons) {
+      // From a Task 2 review: open the matching model essay on the 利弊类 tab.
+      if (tab !== 'pros') {
+        K.set('tab:writing', 'pros')
+        view = 'list'
+        render()
+      }
+      const r = V.prosCons.act(name, el, body)
+      if (r && r.write)
+        return writeWith(r.write)
+      return r
+    }
+  }
+
+  /** Open the Task 2 editor for a prompt from the 利弊类 handout, with its structure shown. */
+  function writeWith(id) {
+    K.set('tab:writing', 'task2')
+    tab = 'task2'
+    root.querySelectorAll('.sk-tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.value === 'task2')))
+    open(id)
+    showPlan = true
+    renderBody()
   }
 
   V.pages = V.pages || {}
@@ -544,6 +482,10 @@
       })
       K.wire(el, {
         onAct,
+        onSeg(name, value) {
+          if (name === 'p-sub' && V.prosCons)
+            V.prosCons.onSeg(value, body)
+        },
         onChange(e) {
           const el = e.target
           if (el.dataset.act === 'w-self') {
@@ -567,10 +509,12 @@
           }
         },
         onKeydown(e) {
-          if (e.target.id === 's-answer' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && !sShown) {
-            e.preventDefault()
-            sReveal()
-          }
+          if (e.target.id === 's-answer')
+            return sent.onKeydown(e, body)
+          if (V.grammarDrill && e.target.closest && e.target.closest('.gd-run'))
+            return V.grammarDrill.onKeydown(e, body)
+          if (V.prosCons && e.target.closest && e.target.closest('.pc'))
+            return V.prosCons.onKeydown(e, body)
         },
       })
     },

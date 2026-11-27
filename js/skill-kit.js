@@ -313,7 +313,7 @@
             ${audio ? `<div class="sh-audio-row">${a.examAudio
               ? `<button type="button" class="btn${a.played ? '' : ' primary'}" data-act="sh-play"${a.played ? ' disabled' : ''}>${icon('headphones')}<span>${a.played ? '已播放（考试模式只播一次）' : '播放音频'}</span></button><span class="muted sh-audio-name">${esc(audio.name)}</span>`
               : `<audio id="sh-player" controls preload="auto" src="${audio.url}"></audio>`}</div>` : ''}
-            <div class="sh-audio-row"><label class="btn ghost">${icon('upload')}<span>${audio ? '换一个音频文件' : '选择本地音频（可选）'}</span><input type="file" accept="audio/*,.mp3,.m4a,.wav,.aac" data-act="sh-audio" hidden></label>
+            <div class="sh-audio-row"><label class="btn ghost file-pick">${icon('upload')}<span>${audio ? '换一个音频文件' : '选择本地音频（可选）'}</span><input type="file" accept="audio/*,.mp3,.m4a,.wav,.aac" data-act="sh-audio" aria-label="选择本地音频"></label>
               <label class="sh-check"><input type="checkbox" data-act="sh-exam"${a.examAudio ? ' checked' : ''}><span>考试模式：只播一次，不能暂停和拖动</span></label></div>
             ${audio && a.examAudio ? `<audio id="sh-player" preload="auto" src="${audio.url}"></audio>` : ''}</div>`
         : ''

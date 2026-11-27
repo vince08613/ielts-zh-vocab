@@ -12,6 +12,7 @@
     { key: 'dict', name: '信息听写', unit: '题', target: 10, page: 'listening', sub: 'info', icon: 'audio-lines' },
     { key: 'r538', name: '阅读 538 同义替换', unit: '词', target: 20, page: 'reading', sub: '538', icon: 'repeat' },
     { key: 'sent', name: '100 句翻译', unit: '句', target: 5, page: 'writing', sub: 'sent', icon: 'languages' },
+    { key: 'tense', name: '时态语态', unit: '题', target: 20, page: 'writing', sub: 'tense', icon: 'clock' },
     { key: 'speak', name: '口语录音回答', unit: '题', target: 4, page: 'speaking', sub: 'p1', icon: 'mic' },
   ]
   const WEEKLY = [

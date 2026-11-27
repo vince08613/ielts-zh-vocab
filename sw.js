@@ -1,6 +1,6 @@
 /* Offline cache. Network first so updates show up immediately; cache when offline.
    Bump CACHE when the asset list changes. */
-const CACHE = 'ielts-zh-vocab-v3-mwwd775m'
+const CACHE = 'ielts-zh-vocab-v4-mwyck2oa'
 const ASSETS = [
   './',
   'index.html',
@@ -11,10 +11,17 @@ const ASSETS = [
   'data/skills.js',
   'data/reading.js',
   'data/writing.js',
+  'data/sent-keys.js',
+  'data/grammar.js',
+  'data/pros-cons.js',
+  'data/dict-en.js',
   'data/speaking.js',
   'js/judge.js',
   'js/core.js',
   'js/answers.js',
+  'js/translate-check.js',
+  'js/grammar-gen.js',
+  'js/bank-store.js',
   'js/writing-check.js',
   'js/util.js',
   'js/store.js',
@@ -27,9 +34,13 @@ const ASSETS = [
   'js/train.js',
   'js/train-home.js',
   'js/skill-kit.js',
+  'js/sent-drill.js',
+  'js/grammar-drill.js',
+  'js/writing-pros.js',
   'js/syn-drill.js',
   'js/daily.js',
   'js/listening.js',
+  'js/bank.js',
   'js/reading.js',
   'js/writing.js',
   'js/speaking.js',
@@ -55,7 +66,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin)
+  const url = new URL(req.url)
+  // The private reading bank (served only by the local server) is kept in IndexedDB, not here.
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.indexOf('/bank/') >= 0)
     return
   event.respondWith(
     // Revalidate with the server so a new deployment shows up on the next open.

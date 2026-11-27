@@ -13,6 +13,7 @@
 
   const TABS = [
     { value: 'test', label: '原创模考', icon: 'book-open-text' },
+    { value: 'bank', label: '题库', icon: 'library' },
     { value: '538', label: '538 同义替换', icon: 'repeat' },
     { value: 'sheet', label: '答题卡', icon: 'clipboard-list' },
     { value: 'tips', label: '题型与方法', icon: 'lightbulb' },
@@ -409,6 +410,8 @@
     }
     if (tab === '538')
       return drill.render(body)
+    if (tab === 'bank')
+      return V.bank.render(body)
     if (tab === 'sheet')
       return sheet.render(body)
     if (tab === 'tips') {
@@ -462,11 +465,15 @@
   function onAct(name, el) {
     if (name === 'sub') {
       drill.leave()
+      if (tab === 'bank')
+        V.bank.leave()
       K.set('tab:reading', el.dataset.value)
       return render()
     }
     if (name.startsWith('sd-'))
       return drill.act(name, el)
+    if (name.startsWith('bk-'))
+      return V.bank.act(name, el)
     switch (name) {
       case 'rd-start': return start(el.dataset.ids.split(','))
       case 'rd-resume':
@@ -541,6 +548,8 @@
         onSeg(name, value) {
           if (name.startsWith('sd-'))
             return drill.onSeg(name, value)
+          if (name.startsWith('bk-'))
+            return V.bank.onSeg(name, value)
           if (name === 'rd-cur') {
             const t = test()
             t.cur = value
@@ -571,6 +580,8 @@
           }
         },
         onChange(e) {
+          if (tab === 'bank')
+            return V.bank.onChange(e)
           const el = e.target
           if (el.dataset.act === 'rd-sel')
             setAnswer(el.dataset.n, el.value)
@@ -580,12 +591,16 @@
           }
         },
         onInput(e) {
+          if (tab === 'bank')
+            return V.bank.onInput(e)
           if (tab === '538')
             drill.onInput(e)
           if (e.target.dataset.act === 'rd-gap')
             setAnswer(e.target.dataset.n, e.target.value)
         },
         onKeydown(e) {
+          if (tab === 'bank')
+            return V.bank.onKeydown(e)
           if (tab === '538')
             return drill.onKeydown(e)
           if (e.key === 'Enter' && !e.isComposing && e.target.dataset.act === 'rd-gap') {
@@ -603,6 +618,8 @@
     render,
     leave() {
       drill.leave()
+      if (tab === 'bank')
+        V.bank.leave()
       if (view === 'result')
         view = 'home'
     },
