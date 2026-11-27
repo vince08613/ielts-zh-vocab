@@ -134,10 +134,11 @@
           ta.focus()
         return false
       }
-      await V.loadDict()
+      // On a slow connection, judge without the spelling list rather than keep the learner waiting.
+      await Promise.race([V.loadDict(), new Promise(r => setTimeout(r, 4000))])
       const no = run.nos[run.pos]
       const s = byNo(no)
-      const res = TC.check(text, itemOf(s))
+      const res = Object.assign(TC.check(text, itemOf(s)), { noDict: !TC.hasDict() })
       const firstHere = !run.seen.has(run.pos)
       run.typed = text
       run.res = res
@@ -233,6 +234,7 @@
         ${spell.length || gram.length || meaning.length ? `<ul class="w-pats tc-issues">${[...meaning, ...spell, ...gram].join('')}</ul>` : ''}
         ${tips.length ? `<ul class="w-pats tc-issues tips">${tips.join('')}</ul>` : ''}
         ${opt.length ? `<p class="tc-line muted"><span class="label">可补充</span><span>${opt.map(esc).join('、')}</span></p>` : ''}
+        ${res.noDict ? '<p class="tc-line muted"><span class="label">拼写</span><span>拼写词典还在下载，这次没有检查拼写</span></p>' : ''}
       </div>
       <div class="s-ref">
         <div class="sd-fb-row"><span class="label">参考</span><span lang="en" class="tc-refline">${refHtml(res)}</span></div>
